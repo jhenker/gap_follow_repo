@@ -34,6 +34,8 @@ private:
     float car_width = 0.1;
     float MIN_RANGE = 1;
     float RANGE_RATIO = 0.4;
+    int segment_size = 10;
+    float change_thresh = 0.2;
 
     void preprocess_lidar(std::vector<float>& ranges)
     {   
@@ -68,23 +70,88 @@ private:
 	
 	}
 	min_dist = ranges[min_index];
-	
 	//zero out the array within the distance 
-	float one_index_increment = min_dist * sin(angle_increment);
+	float one_index_increment = min_dist * tan(angle_increment);
 	float cur_distance = 0.0;
 	int cur_index = 0;
+	bool l_edge = false;
+	bool r_edge = false;
+	int right_start_seg;
+	int left_start_seg;
 	while((cur_distance < (safety_bubble_size / 2.0)) && (size_t(min_index+cur_index) < ranges.size()) && (min_index-cur_index >= 0)){
 		//RCLCPP_INFO(this->get_logger(),"While %f is less than %f, Cur_INDEX IS %d",cur_distance, safety_bubble_size / 2.0, cur_index);
-		ranges[min_index + cur_index] = 0.0;
-		ranges[min_index - cur_index] = 0.0;
-		//RCLCPP_INFO(this->get_logger(),"Ranges that set to zero are %f and %f", ranges[min_index + cur_index], ranges[min_index-cur_index]);
+		
+		if (!l_edge){
+		ranges[min_index-cur_index]=0.0;
+		float avg_left = compute_average(ranges, (min_index - cur_index), segment_size);
+                float avg_left_minus = compute_average(ranges, (min_index - cur_index) - segment_siz
+e/2; segment_size);
+		}
+		if (!r_edge){
+		ranges[min_index+cur_index]=0.0;
+		float avg_right = compute_average(ranges, (min_index + cur_index), segment_size);
+                float avg_right_plus = compute_average(range, (min_index + cur_index) + segment_size
+/2, segment_size);
+		}
+		if (std::abs(avg_left - avg_left_minus > change_thresh){
+		r_edge = true;
+		right_start_seg = min_index+cur_index;
+		}
+		if(std::abs(avg_right - avg_right_plus) > change_thresh){
+		l_edge = true;
+		left_start_seg = min_index-cur_index;
+		}
+		counter = cur_index;
 		cur_index++;
 		cur_distance += one_index_increment;
 	}
-	//loop through half the size of safety bubble zeroing the array
+	if (l_edge){
+	zero_seg_left(ranges,left_start_seg,segment_size);
+	}
+	if (r_edge){
+	zero_seg_right(ranges,right_start_seg,segment_size);
+	}
 
+
+	//loop through half the size of safety bubble zeroing the array
+	//Print out curr_index to see how many indexes we set to 0.
+	RCLCPP_INFO(this->get_logger(), "How many indexes we set to 0 in each direction: %f",cur_index);
 	return;
     }
+
+    void zero_seg_right(std::vector<float>& ranges, int start, int size){
+
+		for (int i = start; i < start+size; ++i){
+			if ((start+i) < ranges.size()){
+				ranges[start+i] = 0;
+			}
+			else{
+				return;
+			}
+		}
+    }
+
+    void zero_seg_left(std::vector<float>& ranges, int start, int size){
+
+		for (int i = start; i < start + size; ++i){
+			if ((start-i) > 0){
+				ranges[start-i]=0;
+			}
+			else{
+				return;
+			}
+		}
+    }
+
+    float compute_average(const std::vector<float>& ranges, int start, int size){
+	float sum = 0.0;
+	for (int i = start; i < start + size && i < ranges.size(); ++i){
+		sum+= ranges[i];
+    	}	
+	return sum / size;
+     }
+
+
 
     void disparity_extender(std::vector<float>& ranges, float angle_increment){
 	//loop through array if the difference between two points is greater than some thresh hold 
